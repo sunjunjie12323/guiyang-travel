@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>贵客松 · Live 贴纸手账</title>
+<link rel="stylesheet" href="app.css?v=20260829c">
+</head>
+<body>
+
+<!-- 引导页（draft03/01/15） -->
+<div id="view-onboarding" class="view">
+  <span class="ob-skip" onclick="OB.skip()">跳过 ›</span>
+  <div class="ob-stage" id="ob-stage"></div>
+  <div class="ob-dots" id="ob-dots"></div>
+  <div class="ob-actions">
+    <button class="btn btn-orange" id="ob-next">下一步</button>
+  </div>
+</div>
+
+<!-- 首页（draft11） -->
+<div id="view-home" class="view">
+  <div class="home-head">
+    <img class="logo" src="assets/mascot.png">
+    <div class="brand"><b>贵客松</b><span>Live旅行贴纸绘本</span></div>
+    <span class="head-ico" onclick="Home.openDesk()" style="position:relative"><i data-icon="bell" data-size="20"></i><span class="badge-n" id="bell-badge" style="display:none"></span></span>
+    <span class="head-ico" onclick="App.go('square')"><i data-icon="search" data-size="20"></i></span>
+  </div>
+  <div class="home-title">
+    <h1>我的旅行手账</h1>
+    <div class="sub">把今天拍到的回忆贴进本子</div>
+    <div class="crumb-pill" onclick="Book.open()"><i data-icon="map-pin" data-size="13"></i> 中国 <em>›</em> 贵州 <em>›</em> 黔东南</div>
+  </div>
+  <div class="home-book-wrap" id="home-book-wrap">
+    <canvas id="book3d-canvas"></canvas>
+    <img class="desk-mascot" src="assets/env_mascot_stand.png">
+    <img class="desk-plant" src="assets/env_plant.png">
+    <img class="desk-postcard" src="assets/env_postcard.png">
+    <div class="home-open-hint" id="open-hint">👆 点击打开绘本 ✨</div>
+  </div>
+  <div class="recent-block">
+    <div class="recent-title">最近贴纸</div>
+    <div class="recent-row" id="recent-row"></div>
+  </div>
+  <div class="home-cta">
+    <button class="btn btn-orange" onclick="Camera.open()"><i data-icon="camera" data-size="19"></i> 拍一段</button>
+  </div>
+
+  <!-- 书本模式覆盖层（单页，右侧 ">" 贴纸盘） -->
+  <div id="book-overlays">
+    <div class="ov-top">
+      <span class="ov-close" onclick="Book.close()"><i data-icon="chevron-left" data-size="22"></i></span>
+      <span class="crumb-pill sm"><i data-icon="map-pin" data-size="12"></i> <span id="ov-vol">中国 / 贵州 / 全部</span></span>
+      <span class="ov-pager">
+        <button class="pbtn disabled" id="btn-prev" onclick="Book.flipPrev()">上一页</button>
+        <span class="pg-status" id="pg-status">1</span>
+        <button class="pbtn" id="btn-next" onclick="Book.flipNext()">下一页</button>
+      </span>
+    </div>
+    <div class="sticker-tray" id="sticker-tray">
+      <div class="tray-label">贴纸</div>
+      <div class="tray-row" id="tray-row"></div>
+      <div class="tray-label">图案贴纸</div>
+      <div class="tray-row patterns" id="tray-patterns"></div>
+    </div>
+    <div class="book-tools">
+      <span class="tool-pill" id="tool-draw" onclick="Book.toggleDraw()"><i data-icon="pen-tool" data-size="17"></i>画笔</span>
+      <span class="tool-pill" id="tool-emoji" onclick="Book.toggleEmojiBar()"><i data-icon="smile" data-size="17"></i>表情</span>
+      <span class="tool-pill" onclick="Book.addText()"><i data-icon="type" data-size="17"></i>文字</span>
+      <span class="tool-pill" onclick="Print.open()"><i data-icon="printer" data-size="17"></i>打印</span>
+    </div>
+    <div class="book-hint" id="book-hint"><i data-icon="sparkles" data-size="14"></i> 拖动贴纸到绘本，也可以写字和贴表情</div>
+    <div class="emoji-row" id="emoji-row" style="display:none"></div>
+  </div>
+  <canvas id="draw-layer"></canvas>
+</div>
+
+<!-- 拍摄（draft13） -->
+<div id="view-camera" class="view">
+  <video id="cam-video" autoplay playsinline muted></video>
+  <div class="cam-top">
+    <span class="cam-x" onclick="Camera.close()"><i data-icon="x" data-size="22"></i></span>
+    <span class="cam-loc" onclick="Camera.pickLoc()"><i data-icon="map-pin" data-size="14"></i> 中国 · 贵州 · 黔东南 <em>⌄</em></span>
+    <span class="cam-flash" id="cam-flash" onclick="Camera.toggleTorch()"><i data-icon="zap" data-size="19"></i></span>
+  </div>
+  <img class="cam-mascot" src="assets/env_cam_mascot.png">
+  <div class="cam-bottom">
+    <div class="cam-styles" id="cam-styles"></div>
+    <div class="cam-controls">
+      <div class="cam-recent" id="cam-recent" onclick="Camera.openRecent()"><span>最近贴纸</span></div>
+      <div id="shutter" onclick="Camera.shoot()"><i data-icon="camera" data-size="30"></i></div>
+      <div class="cam-flip" onclick="Camera.flip()"><i data-icon="refresh-cw" data-size="22"></i><span>翻转镜头</span></div>
+    </div>
+    <div class="cam-hint">拍摄后自动生成贴纸</div>
+    <div class="cam-mode"><b data-m="photo" onclick="Camera.setMode('photo')">照片</b><b data-m="live" class="on" onclick="Camera.setMode('live')">Live</b></div>
+  </div>
+</div>
+
+<!-- 生成页（draft05） -->
+<div id="view-gen" class="view">
+  <div class="gen-top"><span class="ov-close" onclick="Gen.goHome()"><i data-icon="chevron-left" data-size="22"></i></span><b>正在生成贴纸</b><span class="gen-bg-chip"><i data-icon="download" data-size="13"></i> 后台处理</span></div>
+  <div class="gen-ring">
+    <svg width="190" height="190">
+      <defs><linearGradient id="ring-g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#7FB3E8"/><stop offset="1" stop-color="#F26A4B"/>
+      </linearGradient></defs>
+      <circle cx="95" cy="95" r="82" fill="none" stroke="rgba(127,179,232,.22)" stroke-width="14" stroke-linecap="round"/>
+      <circle id="gen-arc" cx="95" cy="95" r="82" fill="none" stroke="url(#ring-g)" stroke-width="14" stroke-linecap="round"
+        stroke-dasharray="515" stroke-dashoffset="515" transform="rotate(-90 95 95)"/>
+    </svg>
+    <div class="pct" id="gen-pct">0<small>%</small></div>
+  </div>
+  <div class="gen-ip">
+    <img src="assets/env_gen_easel.png">
+    <span class="bubble" id="gen-bubble">图片生成中…</span>
+  </div>
+  <div class="gen-style-card" id="gen-style-card"></div>
+  <div class="gen-steps" id="gen-steps"></div>
+  <div class="gen-hint"><img src="assets/mascot.png"> 你可以继续拍摄，我们会在后台完成处理</div>
+  <div class="gen-btns">
+    <button class="btn btn-orange" onclick="Gen.continueShooting()"><i data-icon="camera" data-size="18"></i> 继续拍</button>
+    <button class="btn btn-ghost" id="gen-later" onclick="Gen.goHome()" disabled>稍后查看</button>
+  </div>
+</div>
+
+<!-- 广场 -->
+<div id="view-square" class="view">
+  <div class="page-body" id="square-body"></div>
+</div>
+
+<!-- 我的（draft16） -->
+<div id="view-profile" class="view">
+  <div class="page-body" id="profile-body"></div>
+</div>
+
+<!-- 旅行地图（draft08） -->
+<div id="view-map" class="view">
+  <div class="page-body" id="map-body"></div>
+</div>
+
+<!-- 公开范围（draft14） -->
+<div id="view-privacy" class="view">
+  <div class="page-body" id="privacy-body"></div>
+</div>
+
+<!-- 打印 -->
+<div id="view-print" class="view">
+  <div class="book-top"><span class="back" onclick="Print.close()">‹</span><b style="font-size:19px">打印手账</b></div>
+  <div class="page-body" id="print-body"></div>
+</div>
+
+<!-- 贴纸详情（draft10/12） -->
+<div id="card-mask" class="card-mask" style="display:none" onclick="if(event.target===this)Card.close()">
+  <div class="sticker-dialog" id="card-dialog"></div>
+</div>
+
+<!-- 放置预览（draft02） -->
+<div id="place-overlay" class="place-overlay" style="display:none">
+  <div class="place-box" id="place-box"></div>
+</div>
+<div id="place-bar" class="place-bar" style="display:none">
+  <p>拖动贴纸 · 双指缩放 · 旋转调整</p>
+  <div class="place-btns">
+    <button class="btn btn-ghost btn-sm" onclick="Place.cancel()">取消</button>
+    <button class="btn btn-orange btn-sm" onclick="Place.confirm()">确认放置</button>
+  </div>
+</div>
+
+<img id="drag-ghost">
+
+<!-- 底栏 -->
+<nav class="tabbar" id="tabbar">
+  <div class="tab on" data-tab="home" onclick="App.go('home')"><i data-icon="home" data-size="21"></i>首页</div>
+  <div class="tab" data-tab="camera" onclick="Camera.open()"><i data-icon="camera" data-size="21"></i>拍摄</div>
+  <div class="tab" data-tab="square" onclick="App.go('square')"><i data-icon="users" data-size="21"></i>广场</div>
+  <div class="tab" data-tab="profile" onclick="App.go('profile')"><i data-icon="user" data-size="21"></i>我的</div>
+</nav>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/page-flip.browser.js"></script>
+<script src="icons.js?v=20260829c"></script>
+<script src="book3d.js?v=20260829c"></script>
+<script src="app.js?v=20260829c"></script>
+</body>
+</html>
