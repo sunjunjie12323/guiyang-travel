@@ -29,6 +29,7 @@
   --font-hand: "LXGW WenKai", "霞鹜文楷", "Kaiti SC", "楷体", serif;
 }
 
+
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; }
 body {
@@ -300,10 +301,19 @@ body.book-mode #draw-layer { position: fixed; inset: 0; z-index: 55; }
 .tray-row { display: flex; gap: 10px; overflow-x: auto; padding: 6px 4px 8px; scrollbar-width: none; }
 .tray-row::-webkit-scrollbar { display: none; }
 .tray-row .sticker-card {
-  width: 62px; height: 62px; cursor: pointer;
+  width: 62px; height: 62px; cursor: pointer; position: relative;
   box-shadow: 0 3px 0 #E2D8C2, 0 8px 14px rgba(80,66,40,.18);
   transition: transform .12s, box-shadow .12s;
 }
+.del-x {
+  display: none; position: absolute; top: -6px; right: -6px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--orange); color: #fff; font-size: 14px; line-height: 20px;
+  text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,.25); z-index: 2; font-weight: 700;
+}
+.tray-row.editing .del-x { display: block; }
+.tray-row.editing .pattern-card { position: relative; }
+.tray-row.editing .sticker-card, .tray-row.editing .pattern-card { animation: jiggle .3s ease-in-out infinite alternate; }
+@keyframes jiggle { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
 .tray-row .sticker-card:active { transform: translateY(2px); box-shadow: 0 1px 0 #E2D8C2, 0 3px 6px rgba(80,66,40,.18); }
 .tray-row .tray-empty {
   color: #5A5348; font-size: 13px; padding: 8px 10px; flex: none; width: 118px; line-height: 1.6;
@@ -730,3 +740,4 @@ body.book-mode #draw-layer { position: fixed; inset: 0; z-index: 55; }
     transform: translateX(-50%);
   }
 }
+

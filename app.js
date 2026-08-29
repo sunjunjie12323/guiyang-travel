@@ -17,22 +17,56 @@ const Store = {
     }
     return this.data;
   },
-  save() { localStorage.setItem(this.key, JSON.stringify(this.data)); },
+  save() { // 防抖：高频操作（打字/拖动）不卡主线程
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this._write(), 250);
+  },
+  saveNow() {
+    clearTimeout(this._t);
+    this._write();
+  },
+  _write() {
+    // 大媒体 → IndexedDB；localStorage 只留元数据（几 KB，永不爆满）
+    (this.data.stickers || []).forEach(s => MediaDB.put(s));
+    const light = {
+      ...this.data,
+      stickers: (this.data.stickers || []).map(s => {
+        const l = { ...s };
+        delete l.frame; delete l.photo; delete l.video; delete l.frames;
+        return l;
+      }),
+    };
+    try { localStorage.setItem(this.key, JSON.stringify(light)); } catch (e) {}
+  },
+  /* 启动后从 IndexedDB 回填媒体字段 */
+  async hydrate() {
+    try {
+      await MediaDB.open();
+      const media = await MediaDB.getAll();
+      (this.data.stickers || []).forEach(s => {
+        const m = media[s.id];
+        if (m) ["frame", "photo", "video", "frames"].forEach(k => { if (m[k] && !s[k]) s[k] = m[k]; });
+      });
+    } catch (e) {}
+    Home.render();
+    if (document.body.classList.contains("book-mode")) Book.refreshPages();
+  },
 };
 Store.load();
+Store.hydrate();
 
 const STYLES = [
+  { id: "album", name: "写实", thumb: "assets/sc_bridge.jpg", filter: "none" }, // 原图直出，不调 AI
   {
     id: "cartoon", name: "卡通", thumb: "assets/sc_miao_day.jpg", filter: "saturate(1.8) contrast(1.25) brightness(1.06)",
     prompt: "将这张照片转换为可爱卡通插画风：粗描边、平涂上色、色彩明快饱和，保留原图主体构图与内容",
   },
-  { id: "album", name: "相册", thumb: "assets/sc_bridge.jpg", filter: "none" },
   {
     id: "oil", name: "油画", thumb: "assets/sc_terrace.jpg", filter: "saturate(1.7) contrast(1.3) brightness(.96)",
     prompt: "将这张照片转换为厚重油画风：明显笔触与刮刀痕、印象派光影、油画颜料质感，保留主体构图",
   },
   {
-    id: "abstract", name: "抽象风", thumb: "assets/sc_falls.jpg", filter: "hue-rotate(24deg) saturate(1.4) contrast(1.2)",
+    id: "abstract", name: "抽象", thumb: "assets/sc_falls.jpg", filter: "hue-rotate(24deg) saturate(1.4) contrast(1.2)",
     prompt: "将这张照片转换为抽象几何构成风：色块拼接、点线面构成、扁平化现代抽象艺术，保留主体大致位置",
   },
 ];
@@ -42,11 +76,15 @@ function styleFilter(id) { const s = STYLES.find(x => x.id === id); return s ? s
 async function aiStyle(rawDataUrl, st) {
   if (!st || !st.prompt) return null;
   try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000); // 90s 上限，超时回退滤镜
     const res = await fetch("/api/images", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: st.prompt, image: rawDataUrl, size: "1024x1024" }),
+      body: JSON.stringify({ prompt: st.prompt, image: rawDataUrl, size: "2K" }),
+      signal: ctrl.signal,
     });
+    clearTimeout(timer);
     const j = await res.json();
     return j.ok ? j.image : null;
   } catch (e) { return null; }
@@ -62,6 +100,11 @@ const OB_PAGES = [
 function escapeHtml(t) {
   return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+/* Shoelace 提示条（替代原生 alert） */
+const Toast = {
+  show(msg) {},
+};
 
 function modeOf(arr) {
   const cnt = {};
@@ -108,6 +151,9 @@ const BUILTINS = [
   { id: "flag", frame: "assets/stk_flag.png" },
   { id: "mascot", frame: "assets/stk_mascot.png" },
 ];
+
+/* 关页面前把防抖中的存档落盘 */
+window.addEventListener("beforeunload", () => Store.saveNow());
 
 /* ================= 应用骨架 ================= */
 const NO_TAB = ["camera", "gen", "onboarding", "map", "privacy", "print"];
@@ -194,7 +240,7 @@ const Home = {
     const badge = document.getElementById("bell-badge");
     badge.textContent = desk.length || "";
     badge.style.display = desk.length ? "flex" : "none";
-    const recent = Store.data.stickers.filter(s => !s.text).slice(-8).reverse();
+    const recent = Store.data.stickers.filter(s => !s.text && !s.builtin).slice(-8).reverse();
     document.getElementById("recent-row").innerHTML = recent.length
       ? recent.map(s => `
         <div class="sticker-card" onclick="Card.open('${s.id}')">
@@ -412,15 +458,61 @@ const Book = {
     }
   },
 
+  /* 托盘删除模式：长按进入（全部带 ❌），点 ❌ 删除，再长按退出 */
+  trayEdit: false,
+  toggleTrayEdit(on) {
+    this.trayEdit = on === undefined ? !this.trayEdit : on;
+    document.getElementById("tray-row").classList.toggle("editing", this.trayEdit);
+  },
+  trayDown(id, e) {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    if (this.trayEdit) {
+      let long = false;
+      const timer = setTimeout(() => { long = true; this.toggleTrayEdit(false); }, 500);
+      const up = () => {
+        clearTimeout(timer);
+        window.removeEventListener("pointerup", up);
+        if (!long) this.deleteTraySticker(id);
+      };
+      window.addEventListener("pointerup", up);
+      return;
+    }
+    let started = false, long = false;
+    const timer = setTimeout(() => { long = true; this.toggleTrayEdit(true); }, 500);
+    const mv = ev => {
+      if (!started && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) {
+        started = true;
+        clearTimeout(timer);
+        this.startDrag(id, e); // 正常拖拽上书
+      }
+    };
+    const up = () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointermove", mv);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up);
+  },
+  deleteTraySticker(id) {
+    Store.data.stickers = Store.data.stickers.filter(v => v.id !== id);
+    MediaDB.del(id);
+    Store.save();
+    Toast.show("已删除");
+    this.renderTray();
+    Home.render();
+  },
+
   renderTray() {
-    const desk = Store.data.stickers.filter(s => !s.placed).slice().reverse();
+    const desk = Store.data.stickers.filter(s => !s.placed && !s.text).slice().reverse();
     document.getElementById("tray-row").innerHTML = desk.length
       ? desk.map(s => s.cutout ? `
-        <div class="pattern-card" style="transform:rotate(${hashRot(s.id)}deg);width:62px;height:62px" onpointerdown="Book.startDrag('${s.id}', event)">
-          <img src="${s.frame}">
+        <div class="pattern-card" style="transform:rotate(${hashRot(s.id)}deg);width:62px;height:62px" onpointerdown="Book.trayDown('${s.id}', event)">
+          <span class="del-x">×</span><img src="${s.frame}">
         </div>` : `
-        <div class="sticker-card" style="transform:rotate(${hashRot(s.id)}deg)" onpointerdown="Book.startDrag('${s.id}', event)">
-          <img src="${s.frame}" style="filter:${styleFilter(s.style)}">
+        <div class="sticker-card" style="transform:rotate(${hashRot(s.id)}deg)" onpointerdown="Book.trayDown('${s.id}', event)">
+          <span class="del-x">×</span><img src="${s.frame}" style="filter:${styleFilter(s.style)}">
         </div>`).join("")
       : `<div class="tray-empty">拍出来的贴纸会先落在这里</div>`;
     document.getElementById("tray-patterns").innerHTML = BUILTINS.map(b => `
@@ -628,6 +720,7 @@ const PageEdit = {
     if (!s) return this.close();
     if (s.builtin || s.text) {
       Store.data.stickers = Store.data.stickers.filter(v => v.id !== s.id);
+      MediaDB.del(s.id);
     } else {
       s.placed = false; // 拍摄的贴纸撤回收纳盘
     }
@@ -880,13 +973,19 @@ const Camera = {
     const last = Store.data.stickers.filter(s => !s.text).slice(-1)[0];
     if (last) Card.open(last.id);
   },
-  /* 按当前模式产出贴纸帧：frame=白卡相框 / cutout=主体抠图异形模切 */
+  /* 按当前模式产出贴纸帧：优先豆包 AI 风格生成，任何异常回退 CSS 滤镜 */
   async makeFrame(videoEl, videoUrl) {
-    if (this.mode2 === "cutout") {
-      const png = await CutoutSticker.fromVideo(videoEl, styleFilter(this.style));
-      return { frame: png || await (videoUrl ? captureFrame(videoUrl, this.style) : frameFromVideo(videoEl, this.style)), cutout: !!png };
+    const raw = rawFrame(videoEl);
+    const st = STYLES.find(s => s.id === this.style) || STYLES[0];
+    let styled = null;
+    if (st.prompt) {
+      try { styled = await aiStyle(raw, st); } catch (e) { styled = null; }
     }
-    const frame = videoUrl ? await captureFrame(videoUrl, this.style) : await frameFromVideo(videoEl, this.style);
+    if (this.mode2 === "cutout") {
+      const png = await CutoutSticker.fromDataURL(styled || raw, styleFilter(this.style));
+      return { frame: png || await wrapCardURL(styled || raw, "album"), cutout: !!png };
+    }
+    const frame = styled ? await wrapCardURL(styled, "album") : await wrapCardURL(raw, this.style);
     return { frame, cutout: false };
   },
 
@@ -894,33 +993,62 @@ const Camera = {
     if (!this.stream) return;
     const shutter = document.getElementById("shutter");
     if (shutter.classList.contains("rec")) return;
+    const v = document.getElementById("cam-video");
     if (this.mode === "photo") {
-      const v = document.getElementById("cam-video");
-      this.makeFrame(v, null).then(r => this.saveSticker(r.frame, null, r.cutout));
+      const raw = rawFrame(v); // 真实原图
+      const job = this.makeFrame(v, null).then(r => this.saveSticker(r.frame, null, r.cutout, null, raw));
+      Gen.run(this.mode2 === "cutout", job);
       return;
     }
+    // Live：按下即跳"正在制作中"，后台录 3 秒真视频（mp4 优先，避开 iOS avc1 黑录）
     shutter.classList.add("rec");
-    const chunks = [];
-    const mime = ["video/mp4;codecs=avc1", "video/webm;codecs=vp9", "video/webm", "video/mp4"]
-      .find(m => MediaRecorder.isTypeSupported(m)) || "";
-    this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
-    this.recorder.ondataavailable = e => chunks.push(e.data);
-    this.recorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: mime.split(";")[0] || "video/mp4" });
-      const videoUrl = await blobToDataUrl(blob);
-      const v = document.getElementById("cam-video");
-      const r = await this.makeFrame(v, videoUrl);
-      this.saveSticker(r.frame, videoUrl, r.cutout);
-    };
-    this.recorder.start();
-    setTimeout(() => { try { this.recorder.stop(); } catch (e) {} shutter.classList.remove("rec"); }, 3000);
+    const job = (async () => {
+      const videoUrl = await this.record3s(v);
+      const cover = await this.makeFrame(v, null);   // 绘本贴纸：AI 风格封面
+      const photo = rawFrame(v);                     // 悬浮窗照片：真实原图
+      this.saveSticker(cover.frame, videoUrl, cover.cutout, null, photo);
+    })();
+    Gen.run(this.mode2 === "cutout", job);
+    setTimeout(() => { shutter.classList.remove("rec"); }, 3000);
   },
-  saveSticker(frame, videoUrl, cutout) {
+
+  /* 录 3 秒真视频；iOS 用裸 "video/mp4"（avc1 参数在部分 iPhone 录黑屏） */
+  record3s() {
+    return new Promise(resolve => {
+      const chunks = [];
+      const mime = ["video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+        .find(m => MediaRecorder.isTypeSupported(m)) || "";
+      this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
+      this.recorder.ondataavailable = e => chunks.push(e.data);
+      this.recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: mime || "video/mp4" });
+        resolve(await blobToDataUrl(blob));
+      };
+      this.recorder.start();
+      setTimeout(() => { try { this.recorder.stop(); } catch (e) {} }, 3000);
+    });
+  },
+
+  /* 实况连拍：每 0.6s 一帧共 5 帧（保留作兜底） */
+  recordLiveFrames(videoEl) {
+    return new Promise(resolve => {
+      const frames = [];
+      let i = 0;
+      const timer = setInterval(() => {
+        frames.push(rawFrame(videoEl));
+        if (++i >= 5) { clearInterval(timer); resolve(frames); }
+      }, 600);
+    });
+  },
+  saveSticker(frame, videoUrl, cutout, liveFrames, rawPhoto) {
     const pos = Store.data.settings.lastPos;
     const poi = pos ? nearestPoi(pos.lat, pos.lng) : null;
     Store.data.stickers.push({
       id: "s" + Date.now(),
-      video: videoUrl, frame, style: this.style, cutout: !!cutout,
+      video: videoUrl, frame,
+      photo: rawPhoto || (liveFrames && liveFrames[0]) || frame, // 悬浮窗用真实原图
+      frames: liveFrames || null,                                 // 真实 Live 帧（原图，不加工）
+      style: this.style, cutout: !!cutout,
       title: poi ? poi.name : "随手拍", note: "", message: "", persons: [],
       province: "贵州", city: poi ? poi.city : (Store.data.settings.lastCity || "黔东南"),
       place: poi ? poi.name : null,
@@ -929,7 +1057,6 @@ const Camera = {
       date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
     });
     Store.save();
-    Gen.run(this.mode2 === "cutout");
   },
 };
 
@@ -940,6 +1067,51 @@ function blobToDataUrl(blob) {
     r.readAsDataURL(blob);
   });
 }
+/* 原始帧（960 方图 jpeg，无滤镜，供 AI 生成输入） */
+function rawFrame(v) {
+  const s = Math.min(v.videoWidth, v.videoHeight);
+  const c = document.createElement("canvas");
+  c.width = 960; c.height = 960;
+  c.getContext("2d").drawImage(v, (v.videoWidth - s) / 2, (v.videoHeight - s) / 2, s, s, 0, 0, 960, 960);
+  return c.toDataURL("image/jpeg", .9);
+}
+
+/* dataURL → 白卡相纸（styleId 仅作 CSS 滤镜兜底） */
+function wrapCardURL(dataUrl, styleId) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.width, img.height);
+      const c = document.createElement("canvas");
+      c.width = 480; c.height = 480;
+      const ctx = c.getContext("2d");
+      ctx.filter = styleFilter(styleId);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 480, 480);
+      res(wrapCard(c));
+    };
+    img.onerror = () => res(null);
+    img.src = dataUrl;
+  });
+}
+
+/* dataURL → 仅加 CSS 滤镜（Live 帧用，返回 dataURL） */
+function applyFilterURL(dataUrl, filterCss) {
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(img.width, img.height);
+      const c = document.createElement("canvas");
+      c.width = 480; c.height = 480;
+      const ctx = c.getContext("2d");
+      ctx.filter = filterCss || "none";
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 480, 480);
+      res(c.toDataURL("image/jpeg", .85));
+    };
+    img.onerror = () => res(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 function frameFromVideo(v, styleId) {
   const c = document.createElement("canvas");
   const s = Math.min(v.videoWidth, v.videoHeight);
@@ -970,7 +1142,7 @@ function wrapCard(c) {
 
 /* ================= 生成页（draft05） ================= */
 const Gen = {
-  run(cutoutMode) {
+  run(cutoutMode, job) {
     this.steps = ["识别主体", "匹配画风", cutoutMode ? "生成异形贴纸" : "生成白边贴纸"];
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     document.getElementById("view-gen").classList.add("active");
@@ -984,10 +1156,11 @@ const Gen = {
       `<div class="gen-step"><div class="dot">·</div>${s}<div class="st">等待中</div></div>`).join("");
     Iconify.apply(document.getElementById("view-gen"));
 
-    let p = 0;
+    let p = 0, done = false;
+    if (job) job.then(() => { done = true; }).catch(() => { done = true; });
     const arc = document.getElementById("gen-arc");
     const timer = setInterval(() => {
-      p = Math.min(1, p + 0.02 + Math.random() * 0.02);
+      p = Math.min(done ? 1 : 0.92, p + 0.02 + Math.random() * 0.02);
       arc.style.strokeDashoffset = 515 * (1 - p);
       document.getElementById("gen-pct").innerHTML = Math.round(p * 100) + "<small>%</small>";
       const stage = Math.min(2, Math.floor(p * 3));
@@ -1074,9 +1247,7 @@ const Card = {
       });
       return;
     }
-    const media = s.video
-      ? `<video src="${s.video}" autoplay loop muted playsinline></video>`
-      : `<img src="${s.frame}">`;
+    const media = `<img id="sd-photo" src="${s.photo || s.frame}">`;
     const wave = Array.from({ length: 34 }, () => `<i style="height:${4 + Math.random() * 18}px"></i>`).join("");
     dlg.innerHTML = `
       <div class="sd-video">${media}${s.video ? `<div class="wave">${wave}</div>` : ""}</div>
@@ -1097,6 +1268,34 @@ const Card = {
       </div>`;
     document.getElementById("card-mask").style.display = "flex";
     Iconify.apply(dlg);
+    // 点击照片 → 切换为真实视频播放（再点回照片）
+    const photo = document.getElementById("sd-photo");
+    if (s.video && photo) {
+      photo.style.cursor = "pointer";
+      photo.onclick = () => {
+        const box = photo.parentElement;
+        if (photo.dataset.playing) {
+          const back = document.createElement("img");
+          back.id = "sd-photo";
+          back.src = s.photo || s.frame;
+          back.style.cssText = photo.style.cssText;
+          back.style.cursor = "pointer";
+          back.onclick = photo.onclick;
+          photo.replaceWith(back);
+        } else {
+          const vid = document.createElement("video");
+          vid.src = s.video;
+          vid.autoplay = true; vid.loop = true; vid.muted = false; vid.playsInline = true;
+          vid.controls = true;
+          vid.id = "sd-photo";
+          vid.dataset.playing = "1";
+          vid.style.cssText = photo.style.cssText;
+          vid.onclick = photo.onclick;
+          photo.replaceWith(vid);
+          vid.play().catch(() => { vid.muted = true; vid.play().catch(() => {}); });
+        }
+      };
+    }
     document.getElementById("card-fav").onclick = () => {
       s.favorite = !s.favorite;
       Store.save();
@@ -1109,12 +1308,16 @@ const Card = {
   delete(id) {
     if (!confirm("这张贴纸要撕掉吗？")) return;
     Store.data.stickers = Store.data.stickers.filter(v => v.id !== id);
+    MediaDB.del(id);
     Store.save();
     this.close();
     Home.render();
     if (document.body.classList.contains("book-mode")) { Book.renderTray(); Book.refreshPages(); }
   },
-  close() { document.getElementById("card-mask").style.display = "none"; },
+  close() {
+    if (this._liveTimer) { clearInterval(this._liveTimer); this._liveTimer = null; }
+    document.getElementById("card-mask").style.display = "none";
+  },
 };
 
 /* ================= 广场（真实名片 + 公开范围） ================= */
@@ -1203,6 +1406,8 @@ const Profile = {
 /* ================= 旅行地图（draft08） ================= */
 const MapView = {
   render() {
+    /* 打卡地图由 map/index.html iframe 承载，不再自绘 */
+    if (document.getElementById("map-frame")) return;
     const all = Store.data.stickers;
     const provinces = new Set(all.map(s => s.province)).size;
     const byCity = {};

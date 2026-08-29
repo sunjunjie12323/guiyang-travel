@@ -139,13 +139,7 @@ const CutoutSticker = (() => {
     return crop.toDataURL("image/png");
   }
 
-  async function fromVideo(video, filterCss) {
-    const s = Math.min(video.videoWidth, video.videoHeight);
-    const c = document.createElement("canvas");
-    c.width = 480; c.height = 480;
-    const ctx = c.getContext("2d");
-    ctx.filter = filterCss || "none";
-    ctx.drawImage(video, (video.videoWidth - s) / 2, (video.videoHeight - s) / 2, s, s, 0, 0, 480, 480);
+  async function fromCanvas(c) {
     await ensureSeg();
     let mask = segReady ? await personMask(c) : null;
     if (mask) {
@@ -161,5 +155,32 @@ const CutoutSticker = (() => {
     return dieCut(c, mask);
   }
 
-  return { fromVideo };
+  async function fromVideo(video, filterCss) {
+    const s = Math.min(video.videoWidth, video.videoHeight);
+    const c = document.createElement("canvas");
+    c.width = 480; c.height = 480;
+    const ctx = c.getContext("2d");
+    ctx.filter = filterCss || "none";
+    ctx.drawImage(video, (video.videoWidth - s) / 2, (video.videoHeight - s) / 2, s, s, 0, 0, 480, 480);
+    return fromCanvas(c);
+  }
+
+  async function fromDataURL(url, filterCss) {
+    const img = await new Promise(res => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => res(null);
+      i.src = url;
+    });
+    if (!img) return null;
+    const s = Math.min(img.width, img.height);
+    const c = document.createElement("canvas");
+    c.width = 480; c.height = 480;
+    const ctx = c.getContext("2d");
+    ctx.filter = filterCss || "none";
+    ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 480, 480);
+    return fromCanvas(c);
+  }
+
+  return { fromVideo, fromDataURL };
 })();

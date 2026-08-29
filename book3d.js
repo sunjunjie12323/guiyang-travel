@@ -8,6 +8,7 @@ const Book3D = (() => {
   let bookGroup, bookInner, closedGroup, openGroup, coverPivot, frontCover;
   let pagePivot, flipMesh, flipBack, underPage;
   let textures = [];      // 内容页纹理：0=L0,1=R0,2=L1,3=R1 …
+  const texCache = new Map(); // 页纹理缓存：内容签名 → CanvasTexture（避免重复解码大图）
   let blankTex = null, coverInfo = "";
   let pageIndex = 0;      // 跨页序号 k：左页=2k 右页=2k+1
   let phase = "idle";     // idle | opening | ready | flipping
@@ -876,7 +877,7 @@ const Book3D = (() => {
     blankTex = makeBlankTexture();
 
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // 移动端 GPU 友好
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -1090,7 +1091,7 @@ const Book3D = (() => {
       while (textures.length < need) {
         const idx = textures.length;
         const def = await Promise.resolve(onNewPage ? onNewPage(idx) : { empty: true, seed: idx });
-        textures.push(await makePageTexture(def));
+        textures.push(await texFor(def));
       }
       growing = false;
       if (phase === "ready") setupCurrent();
@@ -1158,8 +1159,8 @@ const Book3D = (() => {
   async function switchPages(pageDefs, dir = 1) {
     if (phase !== "ready" || flipDir !== 0) return;
     const nt = [];
-    for (const d of pageDefs) nt.push(await makePageTexture(d));
-    if (!nt.length) nt.push(await makePageTexture({ side: "L", empty: true, seed: 0, pageNo: 1 }));
+    for (const d of pageDefs) nt.push(await texFor(d));
+    if (!nt.length) nt.push(await texFor({ side: "L", empty: true, seed: 0, pageNo: 1 }));
     pendingSwitch = { textures: nt };
     if (dir > 0) {
       setFlipTextures(textures[pageIndex] || blankTex, nt[0]);
@@ -1224,11 +1225,27 @@ const Book3D = (() => {
     renderer.render(scene, camera);
   }
 
+  /* 页内容签名：只含影响渲染的字段（大图不进签名，改任何属性都会变 → 精确失效） */
+  function defKey(d) {
+    return JSON.stringify({
+      t: d.title, side: d.side, e: d.empty, seed: d.seed,
+      s: (d.stickers || []).map(s => [s.id, s.x, s.y, s.rot, s.scale, s.color, s.text, !!s.html]),
+      st: (d.strokes || []).length, d: (d.decors || []).length,
+    });
+  }
+  async function texFor(def) {
+    const k = defKey(def);
+    if (texCache.has(k)) return texCache.get(k);
+    const t = await makePageTexture(def);
+    texCache.set(k, t);
+    if (texCache.size > 40) texCache.delete(texCache.keys().next().value); // 上限 40 页
+    return t;
+  }
+
   /* ---------- 对外 ---------- */
   async function setPages(pageDefs) {
-    textures = [];
-    for (const d of pageDefs) textures.push(await makePageTexture(d));
-    if (!textures.length) textures.push(await makePageTexture({ side: "L", empty: true, seed: 0, pageNo: 1 }));
+    const defs = pageDefs.length ? pageDefs : [{ side: "L", empty: true, seed: 0, pageNo: 1 }];
+    textures = await Promise.all(defs.map(d => texFor(d)));
     pageIndex = Math.min(pageIndex, textures.length - 1);
     growing = false;
     setupCurrent();

@@ -1,0 +1,191 @@
+{
+  "baili": {
+    "source": "sheet-3.jpg",
+    "width": 512,
+    "height": 367,
+    "aspectRatio": 1.3951,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "baili.webp"
+  },
+  "chishui": {
+    "source": "sheet-2.jpg",
+    "width": 433,
+    "height": 512,
+    "aspectRatio": 0.8457,
+    "confidence": "medium-reviewed",
+    "replaceRecommended": false,
+    "file": "chishui.webp"
+  },
+  "daqikong": {
+    "file": "daqikong.webp",
+    "width": 512,
+    "height": 396,
+    "aspectRatio": 1.2929
+  },
+  "ershisi": {
+    "source": "sheet-3.jpg",
+    "width": 512,
+    "height": 438,
+    "aspectRatio": 1.1689,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "ershisi.webp"
+  },
+  "fanjingshan": {
+    "source": "sheet-1.jpg",
+    "width": 512,
+    "height": 381,
+    "aspectRatio": 1.3438,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "fanjingshan.webp"
+  },
+  "fast": {
+    "source": "sheet-2.jpg",
+    "width": 512,
+    "height": 306,
+    "aspectRatio": 1.6732,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "fast.webp"
+  },
+  "huangguoshu": {
+    "width": 512,
+    "height": 509,
+    "aspectRatio": 1.0059,
+    "file": "huangguoshu.webp"
+  },
+  "huaxi": {
+    "file": "huaxi.webp",
+    "width": 512,
+    "height": 339,
+    "aspectRatio": 1.5103
+  },
+  "jiaxiulou": {
+    "file": "jiaxiulou.webp",
+    "width": 471,
+    "height": 512,
+    "aspectRatio": 0.9199
+  },
+  "longgong": {
+    "source": "sheet-1.jpg",
+    "width": 347,
+    "height": 512,
+    "aspectRatio": 0.6777,
+    "confidence": "medium-reviewed",
+    "replaceRecommended": false,
+    "file": "longgong.webp"
+  },
+  "maotai": {
+    "source": "sheet-2.jpg",
+    "width": 278,
+    "height": 512,
+    "aspectRatio": 0.543,
+    "confidence": "high",
+    "replaceRecommended": true,
+    "file": "maotai.webp"
+  },
+  "qianlingshan": {
+    "file": "qianlingshan.webp",
+    "width": 512,
+    "height": 435,
+    "aspectRatio": 1.177
+  },
+  "qingyan": {
+    "source": "sheet-3.jpg",
+    "width": 512,
+    "height": 337,
+    "aspectRatio": 1.5193,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "qingyan.webp"
+  },
+  "shiqian": {
+    "file": "shiqian.webp",
+    "width": 512,
+    "height": 468,
+    "aspectRatio": 1.094
+  },
+  "shuangrufeng": {
+    "file": "shuangrufeng.webp",
+    "width": 512,
+    "height": 340,
+    "aspectRatio": 1.5059
+  },
+  "tianhetan": {
+    "file": "tianhetan.webp",
+    "width": 512,
+    "height": 341,
+    "aspectRatio": 1.5015
+  },
+  "tuole": {
+    "file": "tuole.webp",
+    "width": 462,
+    "height": 512,
+    "aspectRatio": 0.9023
+  },
+  "wanfenglin": {
+    "source": "sheet-3.jpg",
+    "width": 512,
+    "height": 338,
+    "aspectRatio": 1.5148,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "wanfenglin.webp"
+  },
+  "xiaoqikong": {
+    "source": "sheet-1.jpg",
+    "width": 512,
+    "height": 482,
+    "aspectRatio": 1.0622,
+    "confidence": "medium-reviewed",
+    "replaceRecommended": false,
+    "file": "xiaoqikong.webp"
+  },
+  "xijiang": {
+    "source": "sheet-1.jpg",
+    "width": 462,
+    "height": 512,
+    "aspectRatio": 0.9023,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "xijiang.webp"
+  },
+  "yuntaishan": {
+    "file": "yuntaishan.webp",
+    "width": 512,
+    "height": 429,
+    "aspectRatio": 1.1935
+  },
+  "zhaoxing": {
+    "file": "zhaoxing.webp",
+    "width": 512,
+    "height": 419,
+    "aspectRatio": 1.222
+  },
+  "zhenyuan": {
+    "source": "sheet-1.jpg",
+    "width": 392,
+    "height": 512,
+    "aspectRatio": 0.7656,
+    "confidence": "medium-reviewed",
+    "replaceRecommended": false,
+    "file": "zhenyuan.webp"
+  },
+  "zhijindong": {
+    "source": "sheet-3.jpg",
+    "width": 512,
+    "height": 416,
+    "aspectRatio": 1.2308,
+    "confidence": "high",
+    "replaceRecommended": false,
+    "file": "zhijindong.webp"
+  },
+  "zunyi": {
+    "file": "zunyi.webp",
+    "width": 512,
+    "height": 330,
+    "aspectRatio": 1.5515
+  }
+}
