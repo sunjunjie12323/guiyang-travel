@@ -22,12 +22,35 @@ const Store = {
 Store.load();
 
 const STYLES = [
-  { id: "cartoon", name: "卡通", thumb: "assets/sc_miao_day.jpg", filter: "saturate(1.8) contrast(1.25) brightness(1.06)" },
+  {
+    id: "cartoon", name: "卡通", thumb: "assets/sc_miao_day.jpg", filter: "saturate(1.8) contrast(1.25) brightness(1.06)",
+    prompt: "将这张照片转换为可爱卡通插画风：粗描边、平涂上色、色彩明快饱和，保留原图主体构图与内容",
+  },
   { id: "album", name: "相册", thumb: "assets/sc_bridge.jpg", filter: "none" },
-  { id: "oil", name: "油画", thumb: "assets/sc_terrace.jpg", filter: "saturate(1.7) contrast(1.3) brightness(.96)" },
-  { id: "abstract", name: "抽象风", thumb: "assets/sc_falls.jpg", filter: "hue-rotate(24deg) saturate(1.4) contrast(1.2)" },
+  {
+    id: "oil", name: "油画", thumb: "assets/sc_terrace.jpg", filter: "saturate(1.7) contrast(1.3) brightness(.96)",
+    prompt: "将这张照片转换为厚重油画风：明显笔触与刮刀痕、印象派光影、油画颜料质感，保留主体构图",
+  },
+  {
+    id: "abstract", name: "抽象风", thumb: "assets/sc_falls.jpg", filter: "hue-rotate(24deg) saturate(1.4) contrast(1.2)",
+    prompt: "将这张照片转换为抽象几何构成风：色块拼接、点线面构成、扁平化现代抽象艺术，保留主体大致位置",
+  },
 ];
 function styleFilter(id) { const s = STYLES.find(x => x.id === id); return s ? s.filter : "none"; }
+
+/* 豆包 AI 风格生成（走本地代理 /api/images；失败返回 null 由调用方回退 CSS 滤镜） */
+async function aiStyle(rawDataUrl, st) {
+  if (!st || !st.prompt) return null;
+  try {
+    const res = await fetch("/api/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: st.prompt, image: rawDataUrl, size: "1024x1024" }),
+    });
+    const j = await res.json();
+    return j.ok ? j.image : null;
+  } catch (e) { return null; }
+}
 function hashRot(id) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 997; return (h % 7) - 3; }
 
 const OB_PAGES = [
@@ -36,11 +59,39 @@ const OB_PAGES = [
   { img: "assets/env_ob3.png", title: "把回忆贴进自己的绘本", body: "按国家、省份和城市整理，\n随时翻页、写字、收藏和回看。", chips: [["shapes", "自由排版"], ["pen-tool", "手写涂鸦"], ["play", "Live回看"], ["users", "好友分享"]] },
 ];
 
+function escapeHtml(t) {
+  return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function modeOf(arr) {
   const cnt = {};
   let best = null, n = 0;
   arr.forEach(v => { if (v) { cnt[v] = (cnt[v] || 0) + 1; if (cnt[v] > n) { n = cnt[v]; best = v; } } });
   return best;
+}
+
+/* 贵州景点库（经纬度，就近匹配具体位置） */
+const POIS = [
+  { name: "黄果树瀑布", city: "安顺", lat: 25.98, lng: 105.67 },
+  { name: "西江千户苗寨", city: "黔东南", lat: 26.49, lng: 108.17 },
+  { name: "肇兴侗寨", city: "黔东南", lat: 25.91, lng: 109.17 },
+  { name: "加榜梯田", city: "黔东南", lat: 25.62, lng: 108.55 },
+  { name: "镇远古城", city: "黔东南", lat: 27.05, lng: 108.42 },
+  { name: "青岩古镇", city: "贵阳", lat: 26.33, lng: 106.68 },
+  { name: "黔灵山公园", city: "贵阳", lat: 26.6, lng: 106.69 },
+  { name: "甲秀楼", city: "贵阳", lat: 26.57, lng: 106.72 },
+  { name: "梵净山", city: "铜仁", lat: 27.9, lng: 108.7 },
+  { name: "荔波小七孔", city: "黔南", lat: 25.27, lng: 107.73 },
+  { name: "遵义会议会址", city: "遵义", lat: 27.7, lng: 106.93 },
+  { name: "万峰林", city: "黔西南", lat: 24.98, lng: 104.9 },
+];
+function nearestPoi(lat, lng) {
+  let best = null, bd = 1e9;
+  for (const p of POIS) {
+    const d = Math.hypot(p.lat - lat, (p.lng - lng) * Math.cos(p.lat * Math.PI / 180));
+    if (d < bd) { bd = d; best = p; }
+  }
+  return bd * 111 < 60 ? best : null; // 60km 内才算具体位置
 }
 
 /* 内置装饰贴纸库（可反复选用） */
@@ -140,12 +191,10 @@ const Home = {
     requestAnimationFrame(ensureBook3D);
     this.updateCover();
     const desk = Store.data.stickers.filter(s => !s.placed);
-    document.getElementById("open-hint").textContent =
-      desk.length ? `👆 点击打开绘本 ✨（${desk.length} 张新贴纸待整理）` : "👆 点击打开绘本 ✨";
     const badge = document.getElementById("bell-badge");
     badge.textContent = desk.length || "";
     badge.style.display = desk.length ? "flex" : "none";
-    const recent = Store.data.stickers.slice(-8).reverse();
+    const recent = Store.data.stickers.filter(s => !s.text).slice(-8).reverse();
     document.getElementById("recent-row").innerHTML = recent.length
       ? recent.map(s => `
         <div class="sticker-card" onclick="Card.open('${s.id}')">
@@ -194,9 +243,16 @@ const Book = {
     App.go("home");
   },
 
-  /* 每张贴纸占一页内容页槽位，最多 2 张/页（数据驱动） */
-  refreshPages() {
-    const vol = Store.data.stickers.filter(s => s.placed);
+  /* 当前卷：0=全国 1=省份 2=城市 */
+  volume() {
+    const all = Store.data.stickers.filter(s => s.placed && s.id !== this._skipId);
+    if (this.level === 1) return all.filter(s => s.province === this.province);
+    if (this.level === 2) return all.filter(s => s.province === this.province && s.city === this.city);
+    return all;
+  },
+
+  buildDefs() {
+    const vol = this.volume();
     let maxPage = 0;
     vol.forEach(s => { maxPage = Math.max(maxPage, s.page || 0); });
     Object.keys(this.strokes).forEach(k => { maxPage = Math.max(maxPage, +k); });
@@ -204,10 +260,32 @@ const Book = {
     maxPage = Math.max(maxPage, Book3D.getPageIndex());
     const defs = [];
     for (let p = 0; p <= maxPage; p++) defs.push(this.pageDef(p, vol.filter(s => (s.page || 0) === p)));
-    const prov = modeOf(vol.map(s => s.province)) || "贵州";
-    const city = modeOf(vol.map(s => s.city));
-    document.getElementById("ov-vol").textContent = `中国 / ${prov} / ${city || "全部"}`;
-    Book3D.setPages(defs).then(() => this.updateStatus());
+    return defs;
+  },
+
+  refreshPages() {
+    this.updateVolNav();
+    Book3D.setPages(this.buildDefs()).then(() => this.updateStatus());
+  },
+
+  updateVolNav() {
+    const all = Store.data.stickers;
+    this.province = modeOf(all.map(s => s.province)) || "贵州";
+    this.city = modeOf(all.map(s => s.city)) || Store.data.settings.lastCity || "黔东南";
+    const nav = document.getElementById("vol-nav");
+    nav.children[1].textContent = this.province;
+    nav.children[2].textContent = this.city;
+    [...nav.children].forEach(b => b.classList.toggle("on", +b.dataset.l === this.level));
+  },
+
+  /* 切换手账本：翻页动画过渡 */
+  setLevel(l) {
+    if (l === this.level) return;
+    PageEdit.close();
+    const dir = l > this.level ? 1 : -1;
+    this.level = l;
+    this.updateVolNav();
+    Book3D.switchPages(this.buildDefs(), dir);
   },
 
   pageDef(p, stickers) {
@@ -244,21 +322,32 @@ const Book = {
       Math.abs(nx - s.x) < 0.2 * (s.scale || 1) && Math.abs(ny - s.y) < 0.16 * (s.scale || 1));
   },
 
-  /* 按下在贴纸上：短点=详情悬浮卡，长按=虚线框编辑（移动/缩放/旋转/删除） */
+  /* 按下在贴纸上：直接拖=虚线框移动；轻点/长按=详情卡（文字贴纸=内容颜色编辑器） */
   pageDown(uv, e) {
     const hit = this.hitSticker(uv.page, uv.x, uv.y);
     if (!hit) return false;
     const sx = e.clientX, sy = e.clientY;
-    let long = false;
-    const timer = setTimeout(() => { long = true; PageEdit.begin(hit, uv, { clientX: sx, clientY: sy }); }, 420);
+    let editing = false;
+    const openEdit = ev => {
+      editing = true;
+      PageEdit.begin(hit, uv, { clientX: ev.clientX, clientY: ev.clientY });
+    };
+    const timer = setTimeout(() => {
+      editing = true;
+      if (hit.text) Card.open(hit.id); // 文字贴纸：长按 = 编辑内容/颜色
+      else openEdit({ clientX: sx, clientY: sy });
+    }, 420);
     const mv = ev => {
-      if (!long && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) clearTimeout(timer);
+      if (!editing && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 10) {
+        clearTimeout(timer);
+        openEdit(ev); // 直接拖动即移动
+      }
     };
     const up = () => {
       clearTimeout(timer);
       window.removeEventListener("pointermove", mv);
       window.removeEventListener("pointerup", up);
-      if (!long) Card.open(hit.id);
+      if (!editing) Card.open(hit.id); // 轻点 = 详情/编辑
     };
     window.addEventListener("pointermove", mv);
     window.addEventListener("pointerup", up);
@@ -277,12 +366,19 @@ const Book = {
     this.refreshPages();
   },
 
+  /* 文字贴纸：和贴纸一样可移动/缩放/旋转/删除 */
   addText() {
-    const t = prompt("这页想记点什么？");
-    if (!t) return;
-    Store.data.decors = Store.data.decors || {};
-    const p = Book3D.getPageIndex();
-    (Store.data.decors[p] = Store.data.decors[p] || []).push({ kind: "text", content: t, x: 0.5, y: 0.55 });
+    const t = prompt("写点什么？（支持换行）");
+    if (!t || !t.trim()) return;
+    Store.data.stickers.push({
+      id: "t" + Date.now(), text: t.trim(), frame: null, video: null, style: "album",
+      title: "", note: "", message: "", persons: [],
+      province: "贵州", city: Store.data.settings.lastCity || "黔东南",
+      placed: true, page: Book3D.getPageIndex(),
+      x: .5, y: .5, rot: 0, scale: 1,
+      favorite: false, takenAt: Date.now(),
+      date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+    });
     Store.save();
     this.refreshPages();
   },
@@ -319,7 +415,10 @@ const Book = {
   renderTray() {
     const desk = Store.data.stickers.filter(s => !s.placed).slice().reverse();
     document.getElementById("tray-row").innerHTML = desk.length
-      ? desk.map(s => `
+      ? desk.map(s => s.cutout ? `
+        <div class="pattern-card" style="transform:rotate(${hashRot(s.id)}deg);width:62px;height:62px" onpointerdown="Book.startDrag('${s.id}', event)">
+          <img src="${s.frame}">
+        </div>` : `
         <div class="sticker-card" style="transform:rotate(${hashRot(s.id)}deg)" onpointerdown="Book.startDrag('${s.id}', event)">
           <img src="${s.frame}" style="filter:${styleFilter(s.style)}">
         </div>`).join("")
@@ -364,9 +463,10 @@ const Book = {
   },
 
   placeAt(id, uv, builtin) {
+    let s;
     if (builtin) {
       const b = BUILTINS.find(v => v.id === id);
-      Store.data.stickers.push({
+      s = {
         id: "b" + Date.now(), frame: b.frame, builtin: id, video: null, style: "album",
         title: "", note: "", message: "", persons: [],
         province: "贵州", city: Store.data.settings.lastCity || "黔东南",
@@ -375,9 +475,10 @@ const Book = {
         rot: hashRot(id), scale: .62,
         favorite: false, takenAt: Date.now(),
         date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
-      });
+      };
+      Store.data.stickers.push(s);
     } else {
-      const s = Store.data.stickers.find(v => v.id === id);
+      s = Store.data.stickers.find(v => v.id === id);
       if (!s || !uv) return;
       Object.assign(s, { placed: true, page: uv.page, x: uv.x, y: uv.y });
     }
@@ -386,6 +487,7 @@ const Book = {
     this.renderTray();
     this.refreshPages();
     Home.render();
+    if (uv) PageEdit.begin(s, uv); // 落贴即选中（虚线框），可立即继续调整
   },
 
   markHintSeen() {
@@ -395,6 +497,19 @@ const Book = {
     document.getElementById("book-hint").style.display = "none";
   },
 };
+
+/* 文字贴纸的拖拽幽灵图（文字画到画布转 dataURL） */
+function textGhostURL(text) {
+  const c = document.createElement("canvas");
+  c.width = 220; c.height = 220;
+  const x = c.getContext("2d");
+  x.fillStyle = "#4A443C";
+  x.textAlign = "center";
+  x.font = "30px 'QingChun', 'LXGW WenKai', serif";
+  const lines = String(text).split("\n");
+  lines.forEach((ln, i) => x.fillText(ln, 110, 110 + (i - (lines.length - 1) / 2) * 44));
+  return c.toDataURL("image/png");
+}
 
 /* ================= 页上贴纸编辑（虚线框：移动/缩放/旋转/删除） ================= */
 const PageEdit = {
@@ -454,16 +569,34 @@ const PageEdit = {
       uv0: Book3D.pageUV(e.clientX, e.clientY),
       sx0: this.s.x, sy0: this.s.y,
     };
+    // "提起"动画：原贴纸从页面临时隐藏，幽灵实时跟随
+    const ghost = document.getElementById("drag-ghost");
+    ghost.src = this.s.text ? textGhostURL(this.s.text) : this.s.frame;
+    ghost.style.display = "block";
+    this._ghost = ghost;
+    Book._skipId = this.s.id;
+    Book.refreshPages();
+    this.ghostAt(e.clientX, e.clientY);
     const mv = ev => this.gestureMove(ev);
     const up = () => {
       window.removeEventListener("pointermove", mv);
       window.removeEventListener("pointerup", up);
       this._gesture = null;
+      ghost.style.display = "none";
+      this._ghost = null;
+      Book._skipId = null;
       Store.save();
-      Book.refreshPages(); // 重建纹理（框保持对齐）
+      Book.refreshPages(); // 烙回新位置（框保持对齐）
     };
     window.addEventListener("pointermove", mv);
     window.addEventListener("pointerup", up);
+  },
+
+  ghostAt(px, py) {
+    if (!this._ghost) return;
+    this._ghost.style.left = (px - 45) + "px";
+    this._ghost.style.top = (py - 45) + "px";
+    this._ghost.style.transform = `rotate(${(this.s.rot || 0) - 5}deg) scale(${(this.s.scale || 1) * 1.05})`;
   },
 
   gestureMove(e) {
@@ -484,13 +617,16 @@ const PageEdit = {
       const a = Math.atan2(e.clientY - c.y, e.clientX - c.x) * 180 / Math.PI;
       this.s.rot = ((g.rot0 + a - g.a0 + 540) % 360) - 180;
     }
+    const gp = g.mode === "move" ? { x: e.clientX, y: e.clientY }
+      : Book3D.pageToScreen(this.s.page, this.s.x, this.s.y);
+    this.ghostAt(gp.x, gp.y);
     this.layout();
   },
 
   remove() {
     const s = this.s;
     if (!s) return this.close();
-    if (s.builtin) {
+    if (s.builtin || s.text) {
       Store.data.stickers = Store.data.stickers.filter(v => v.id !== s.id);
     } else {
       s.placed = false; // 拍摄的贴纸撤回收纳盘
@@ -612,6 +748,42 @@ const Place = {
 /* ================= 拍摄（draft13） ================= */
 const Camera = {
   stream: null, recorder: null, style: "cartoon", mode: "live", facing: "environment",
+  mode2: "frame", // frame=相框贴纸 cutout=抠图贴纸
+  styleByMode: { frame: "cartoon", cutout: "cartoon" },
+  _wheelsBuilt: false, _m3d: null,
+
+  /* 文字滚轮：居中项即选中 */
+  setupWheel(el, onPick) {
+    const pick = () => {
+      const items = [...el.children];
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      let best = null, bd = 1e9;
+      items.forEach(it => {
+        const ir = it.getBoundingClientRect();
+        const d = Math.abs(ir.left + ir.width / 2 - cx);
+        if (d < bd) { bd = d; best = it; }
+      });
+      if (best && !best.classList.contains("on")) {
+        items.forEach(i => i.classList.remove("on"));
+        best.classList.add("on");
+        onPick(best);
+      }
+    };
+    if (!el._wb) {
+      el._wb = true;
+      let tm;
+      el.addEventListener("scroll", () => { clearTimeout(tm); tm = setTimeout(pick, 90); });
+    }
+    [...el.children].forEach(it => it.onclick = () =>
+      it.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" }));
+  },
+
+  pickMode2(m) {
+    this.mode2 = m;
+    this.style = this.styleByMode[m];
+    this.renderStyles();
+  },
   async open() {
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     document.getElementById("view-camera").classList.add("active");
@@ -619,6 +791,7 @@ const Camera = {
     this.renderStyles();
     this.renderRecent();
     this.refreshLoc();
+    this.locate(); // 尝试获取精确定位
     if (!this.stream) await this.initStream();
     Iconify.apply(document.getElementById("view-camera"));
   },
@@ -651,71 +824,112 @@ const Camera = {
     const cur = Store.data.settings.lastCity || "黔东南";
     const next = cities[(cities.indexOf(cur) + 1) % cities.length];
     Store.data.settings.lastCity = next;
+    Store.data.settings.lastPlace = null; // 手动切换城市时清除精确位置
     Store.save();
     this.refreshLoc();
   },
   refreshLoc() {
+    const s = Store.data.settings;
     document.querySelector(".cam-loc").innerHTML =
-      `<i data-icon="map-pin" data-size="14"></i> 中国 · 贵州 · ${Store.data.settings.lastCity || "黔东南"} <em>⌄</em>`;
+      `<i data-icon="map-pin" data-size="14"></i> ${s.lastPlace || `中国 · 贵州 · ${s.lastCity || "黔东南"}`} <em>⌄</em>`;
     Iconify.apply(document.getElementById("view-camera"));
+  },
+  locate() {
+    if (!navigator.geolocation || this._locTried) return;
+    this._locTried = true;
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        Store.data.settings.lastPos = { lat, lng };
+        const poi = nearestPoi(lat, lng);
+        if (poi) {
+          Store.data.settings.lastCity = poi.city;
+          Store.data.settings.lastPlace = poi.name;
+          Store.save();
+          this.refreshLoc();
+        }
+      },
+      () => {},
+      { timeout: 6000, maximumAge: 300000 },
+    );
   },
   setMode(m) {
     this.mode = m;
     document.querySelectorAll(".cam-mode b").forEach(b => b.classList.toggle("on", b.dataset.m === m));
   },
   renderStyles() {
-    document.getElementById("cam-styles").innerHTML = STYLES.map(s => `
-      <div class="cam-style ${s.id === this.style ? "on" : ""}" data-id="${s.id}">
-        <img src="${s.thumb}" style="filter:${s.filter}"><span>${s.name}</span>
-      </div>`).join("");
-    document.querySelectorAll(".cam-style").forEach(el => {
-      el.onclick = () => { this.style = el.dataset.id; this.renderStyles(); };
+    const wheel = document.getElementById("style-wheel");
+    wheel.innerHTML = STYLES.map(s =>
+      `<b data-id="${s.id}" class="${s.id === this.style ? "on" : ""}">${s.name}</b>`).join("");
+    if (!this._wheelsBuilt) {
+      this._wheelsBuilt = true;
+      this.setupWheel(document.getElementById("mode-wheel"), el => this.pickMode2(el.dataset.m));
+    }
+    this.setupWheel(wheel, el => {
+      this.style = el.dataset.id;
+      this.styleByMode[this.mode2] = this.style; // 画风按模式各自记忆
     });
   },
   renderRecent() {
-    const last = Store.data.stickers[Store.data.stickers.length - 1];
+    const last = Store.data.stickers.filter(s => !s.text).slice(-1)[0];
     document.getElementById("cam-recent").innerHTML = last
       ? `<img src="${last.frame}"><span>最近贴纸</span>`
       : `<div class="ph"></div><span>最近贴纸</span>`;
   },
   openRecent() {
-    const last = Store.data.stickers[Store.data.stickers.length - 1];
+    const last = Store.data.stickers.filter(s => !s.text).slice(-1)[0];
     if (last) Card.open(last.id);
   },
+  /* 按当前模式产出贴纸帧：frame=白卡相框 / cutout=主体抠图异形模切 */
+  async makeFrame(videoEl, videoUrl) {
+    if (this.mode2 === "cutout") {
+      const png = await CutoutSticker.fromVideo(videoEl, styleFilter(this.style));
+      return { frame: png || await (videoUrl ? captureFrame(videoUrl, this.style) : frameFromVideo(videoEl, this.style)), cutout: !!png };
+    }
+    const frame = videoUrl ? await captureFrame(videoUrl, this.style) : await frameFromVideo(videoEl, this.style);
+    return { frame, cutout: false };
+  },
+
   shoot() {
     if (!this.stream) return;
     const shutter = document.getElementById("shutter");
     if (shutter.classList.contains("rec")) return;
     if (this.mode === "photo") {
       const v = document.getElementById("cam-video");
-      frameFromVideo(v, this.style).then(frame => { this.saveSticker(frame, null); });
+      this.makeFrame(v, null).then(r => this.saveSticker(r.frame, null, r.cutout));
       return;
     }
     shutter.classList.add("rec");
     const chunks = [];
-    this.recorder = new MediaRecorder(this.stream, { mimeType: "video/webm" });
+    const mime = ["video/mp4;codecs=avc1", "video/webm;codecs=vp9", "video/webm", "video/mp4"]
+      .find(m => MediaRecorder.isTypeSupported(m)) || "";
+    this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
     this.recorder.ondataavailable = e => chunks.push(e.data);
     this.recorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: "video/webm" });
+      const blob = new Blob(chunks, { type: mime.split(";")[0] || "video/mp4" });
       const videoUrl = await blobToDataUrl(blob);
-      const frame = await captureFrame(videoUrl, this.style);
-      this.saveSticker(frame, videoUrl);
+      const v = document.getElementById("cam-video");
+      const r = await this.makeFrame(v, videoUrl);
+      this.saveSticker(r.frame, videoUrl, r.cutout);
     };
     this.recorder.start();
     setTimeout(() => { try { this.recorder.stop(); } catch (e) {} shutter.classList.remove("rec"); }, 3000);
   },
-  saveSticker(frame, videoUrl) {
+  saveSticker(frame, videoUrl, cutout) {
+    const pos = Store.data.settings.lastPos;
+    const poi = pos ? nearestPoi(pos.lat, pos.lng) : null;
     Store.data.stickers.push({
       id: "s" + Date.now(),
-      video: videoUrl, frame, style: this.style,
-      title: "随手拍", note: "", message: "", persons: [],
-      province: "贵州", city: Store.data.settings.lastCity || "黔东南",
+      video: videoUrl, frame, style: this.style, cutout: !!cutout,
+      title: poi ? poi.name : "随手拍", note: "", message: "", persons: [],
+      province: "贵州", city: poi ? poi.city : (Store.data.settings.lastCity || "黔东南"),
+      place: poi ? poi.name : null,
       placed: false, page: 0, x: .5, y: .45, rot: (Math.random() * 6 - 3), scale: 1,
       favorite: false, takenAt: Date.now(),
       date: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
     });
     Store.save();
-    Gen.run();
+    Gen.run(this.mode2 === "cutout");
   },
 };
 
@@ -756,8 +970,8 @@ function wrapCard(c) {
 
 /* ================= 生成页（draft05） ================= */
 const Gen = {
-  steps: ["识别主体", "匹配画风", "生成白边贴纸"],
-  run() {
+  run(cutoutMode) {
+    this.steps = ["识别主体", "匹配画风", cutoutMode ? "生成异形贴纸" : "生成白边贴纸"];
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     document.getElementById("view-gen").classList.add("active");
     document.getElementById("tabbar").style.display = "none";
@@ -800,17 +1014,76 @@ const Card = {
     const s = Store.data.stickers.find(v => v.id === id);
     if (!s) return;
     const dlg = document.getElementById("card-dialog");
+    // 文字贴纸：富文本编辑器（选中文字可单独改色/改字号）
+    if (s.text) {
+      const COLORS = ["#4A443C", "#4F7A66", "#E2573B", "#D08A2E", "#5489C4", "#8A6B45"];
+      const SIZES = [["0.75", "小"], ["1", "中"], ["1.35", "大"], ["1.7", "特大"]];
+      dlg.innerHTML = `
+        <div class="sd-title"><b>文字</b><span class="sd-tip">选中部分文字，再点颜色或字号</span></div>
+        <div class="rich-edit" id="card-note" contenteditable="true">${s.html || escapeHtml(s.text).replace(/\n/g, "<br>")}</div>
+        <div class="color-row" id="color-row">
+          ${COLORS.map(c => `<span class="csw" data-c="${c}" style="background:${c}"></span>`).join("")}
+        </div>
+        <div class="size-row" id="size-row">
+          ${SIZES.map(z => `<b data-s="${z[0]}" class="${z[0] === "1" ? "on" : ""}">${z[1]}</b>`).join("")}
+        </div>
+        <div class="sd-btns">
+          <button class="btn btn-ghost" onclick="Card.delete('${s.id}')"><i data-icon="trash-2" data-size="15"></i> 删除</button>
+          <button class="btn btn-orange" onclick="Card.close()">完成</button>
+        </div>`;
+      document.getElementById("card-mask").style.display = "flex";
+      Iconify.apply(dlg);
+      const note = document.getElementById("card-note");
+      const save = () => {
+        s.html = note.innerHTML;
+        s.text = note.innerText;
+        Store.save();
+        Book.refreshPages();
+      };
+      note.oninput = save;
+      const wrapSelection = (em) => {
+        // execCommand fontSize 生成 <font size="7">，统一转成带 em 字号的 span
+        document.execCommand("fontSize", false, "7");
+        note.querySelectorAll("font").forEach(f => {
+          const sp = document.createElement("span");
+          sp.style.fontSize = em + "em";
+          sp.innerHTML = f.innerHTML;
+          f.replaceWith(sp);
+        });
+        save();
+      };
+      document.querySelectorAll("#color-row .csw").forEach(sw => {
+        sw.onclick = () => {
+          note.focus();
+          document.execCommand("foreColor", false, sw.dataset.c);
+          note.querySelectorAll("font").forEach(f => {
+            const sp = document.createElement("span");
+            if (f.getAttribute("color")) sp.style.color = f.getAttribute("color");
+            sp.innerHTML = f.innerHTML;
+            f.replaceWith(sp);
+          });
+          save();
+        };
+      });
+      document.querySelectorAll("#size-row b").forEach(b => {
+        b.onclick = () => {
+          note.focus();
+          wrapSelection(parseFloat(b.dataset.s));
+          document.querySelectorAll("#size-row b").forEach(x => x.classList.toggle("on", x === b));
+        };
+      });
+      return;
+    }
     const media = s.video
-      ? `<video src="${s.video}" autoplay loop muted playsinline></video><span class="live-tag">LIVE 3s</span><span class="play"><i data-icon="play" data-size="44"></i></span>`
+      ? `<video src="${s.video}" autoplay loop muted playsinline></video>`
       : `<img src="${s.frame}">`;
     const wave = Array.from({ length: 34 }, () => `<i style="height:${4 + Math.random() * 18}px"></i>`).join("");
     dlg.innerHTML = `
       <div class="sd-video">${media}${s.video ? `<div class="wave">${wave}</div>` : ""}</div>
-      <div class="sd-title"><img src="assets/mascot.png"><b>${s.title || "随手拍"}</b></div>
+      <div class="sd-title"><img src="assets/mascot.png"><input class="sd-title-input" id="card-title" value="${(s.title || "随手拍").replace(/"/g, "&quot;")}" placeholder="给它起个名字…"></div>
       <div class="sd-info">
-        <div class="line"><i data-icon="map-pin" data-size="15"></i> 中国 · ${s.province}${s.city ? " · " + s.city : ""}</div>
+        <div class="line"><i data-icon="map-pin" data-size="15"></i> ${s.place ? `${s.place} · ${s.city || s.province}` : `中国 · ${s.province}${s.city ? " · " + s.city : ""}`}</div>
         <div class="line"><i data-icon="clock" data-size="15"></i> ${new Date(s.takenAt).toLocaleString("zh-CN")}</div>
-        <div class="line"><i data-icon="sparkles" data-size="15"></i> ${STYLES.find(v => v.id === s.style)?.name || "相册"}风 · ${s.favorite ? "已收藏" : "未收藏"}</div>
         <div class="sd-note-label">我的说明</div>
         <textarea class="sd-note" id="card-note" placeholder="写点此刻想说的话…">${s.message || s.note || ""}</textarea>
       </div>
@@ -830,6 +1103,7 @@ const Card = {
       this.open(id); // 重渲染（展物柜联动）
     };
     document.getElementById("card-note").oninput = e => { s.message = e.target.value; s.note = e.target.value; Store.save(); };
+    document.getElementById("card-title").oninput = e => { s.title = e.target.value; Store.save(); };
   },
   editNote() { document.getElementById("card-note").focus(); },
   delete(id) {
@@ -852,7 +1126,7 @@ const Square = {
     document.getElementById("square-body").innerHTML = `
       <div class="sq-head">
         <img class="logo" src="assets/mascot.png">
-        <div class="brand"><b>贵客松</b><span>Live旅行贴纸绘本</span></div>
+        <div class="brand"><b>素行记</b><span>Live旅行贴纸绘本</span></div>
       </div>
       <h1 class="sq-title">旅行广场</h1>
       <div class="sq-sub">打理你的名片，好友互访在后端接入后开放</div>
@@ -876,7 +1150,7 @@ const Square = {
 const Profile = {
   render() {
     const all = Store.data.stickers;
-    const favs = all.filter(s => s.favorite);
+    const favs = all.filter(s => s.favorite && !s.text);
     const desk = all.filter(s => !s.placed);
     const provinces = new Set(all.map(s => s.province)).size;
     const s = Store.data.settings;
@@ -944,7 +1218,7 @@ const MapView = {
       </div>
       ${Object.entries(byCity).map(([city, list]) => `
         <div class="map-city">
-          <div style="position:relative"><img class="thumb" src="${list[0].frame}"><span class="live">LIVE 3s</span></div>
+          <div style="position:relative"><img class="thumb" src="${(list.find(v => !v.text) || list[0]).frame}"><span class="live">LIVE 3s</span></div>
           <div class="info"><b>${city}</b><span>${list[list.length - 1].date || ""}｜${list.length} 张</span></div>
           <button class="btn btn-blue" onclick="Book.open()">进入手账</button>
         </div>`).join("")}
@@ -966,7 +1240,7 @@ const MapView = {
     x.fillText(`已点亮 ${provinces} 个省份 · ${all.length} 段Live`, 60, 880);
     x.fillStyle = "#9B937F"; x.font = "24px 'LXGW WenKai', serif";
     const cities = [...new Set(all.map(s => s.city || s.province))];
-    x.fillText(cities.join(" · ") + " —— 贵客松", 60, 930);
+    x.fillText(cities.join(" · ") + " —— 素行记", 60, 930);
     const a = document.createElement("a");
     a.download = "guikesong-map.png";
     a.href = c.toDataURL("image/png");
@@ -1039,7 +1313,7 @@ const Print = {
     a.click();
   },
   async longImage() {
-    const all = Store.data.stickers;
+    const all = Store.data.stickers.filter(s => !s.text);
     if (!all.length) return;
     const c = document.createElement("canvas");
     c.width = 800;
@@ -1052,7 +1326,7 @@ const Print = {
     ctx.fillText("我的旅行手账", 60, 90);
     ctx.fillStyle = "#9B937F";
     ctx.font = "24px 'LXGW WenKai', serif";
-    ctx.fillText(new Date().toLocaleDateString("zh-CN") + " · 贵客松", 60, 130);
+    ctx.fillText(new Date().toLocaleDateString("zh-CN") + " · 素行记", 60, 130);
     let y = 190;
     for (const s of all) {
       const img = await loadImg(s.frame);
@@ -1076,7 +1350,7 @@ const Print = {
     this.download(c, "guikesong-journal.png");
   },
   async stickerSheet() {
-    const all = Store.data.stickers;
+    const all = Store.data.stickers.filter(s => !s.text);
     if (!all.length) return;
     const cols = 3, cell = 340;
     const rows = Math.ceil(all.length / cols);

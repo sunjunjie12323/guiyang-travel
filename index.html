@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>贵客松 · Live 贴纸手账</title>
-<link rel="stylesheet" href="app.css?v=20260829c">
+<title>素行记 · Live 贴纸手账</title>
+<link rel="stylesheet" href="app.css?v=20260829d">
 </head>
 <body>
 
@@ -22,7 +22,7 @@
 <div id="view-home" class="view">
   <div class="home-head">
     <img class="logo" src="assets/mascot.png">
-    <div class="brand"><b>贵客松</b><span>Live旅行贴纸绘本</span></div>
+    <div class="brand"><b>素行记</b><span>Live旅行贴纸绘本</span></div>
     <span class="head-ico" onclick="Home.openDesk()" style="position:relative"><i data-icon="bell" data-size="20"></i><span class="badge-n" id="bell-badge" style="display:none"></span></span>
     <span class="head-ico" onclick="App.go('square')"><i data-icon="search" data-size="20"></i></span>
   </div>
@@ -33,10 +33,6 @@
   </div>
   <div class="home-book-wrap" id="home-book-wrap">
     <canvas id="book3d-canvas"></canvas>
-    <img class="desk-mascot" src="assets/env_mascot_stand.png">
-    <img class="desk-plant" src="assets/env_plant.png">
-    <img class="desk-postcard" src="assets/env_postcard.png">
-    <div class="home-open-hint" id="open-hint">👆 点击打开绘本 ✨</div>
   </div>
   <div class="recent-block">
     <div class="recent-title">最近贴纸</div>
@@ -50,7 +46,9 @@
   <div id="book-overlays">
     <div class="ov-top">
       <span class="ov-close" onclick="Book.close()"><i data-icon="chevron-left" data-size="22"></i></span>
-      <span class="crumb-pill sm"><i data-icon="map-pin" data-size="12"></i> <span id="ov-vol">中国 / 贵州 / 全部</span></span>
+      <span class="vol-nav" id="vol-nav">
+        <b data-l="0" onclick="Book.setLevel(0)">中国</b><b data-l="1" class="on" onclick="Book.setLevel(1)">贵州</b><b data-l="2" onclick="Book.setLevel(2)">黔东南</b>
+      </span>
       <span class="ov-pager">
         <button class="pbtn disabled" id="btn-prev" onclick="Book.flipPrev()">上一页</button>
         <span class="pg-status" id="pg-status">1</span>
@@ -64,8 +62,6 @@
       <div class="tray-row patterns" id="tray-patterns"></div>
     </div>
     <div class="book-tools">
-      <span class="tool-pill" id="tool-draw" onclick="Book.toggleDraw()"><i data-icon="pen-tool" data-size="17"></i>画笔</span>
-      <span class="tool-pill" id="tool-emoji" onclick="Book.toggleEmojiBar()"><i data-icon="smile" data-size="17"></i>表情</span>
       <span class="tool-pill" onclick="Book.addText()"><i data-icon="type" data-size="17"></i>文字</span>
       <span class="tool-pill" onclick="Print.open()"><i data-icon="printer" data-size="17"></i>打印</span>
     </div>
@@ -83,9 +79,11 @@
     <span class="cam-loc" onclick="Camera.pickLoc()"><i data-icon="map-pin" data-size="14"></i> 中国 · 贵州 · 黔东南 <em>⌄</em></span>
     <span class="cam-flash" id="cam-flash" onclick="Camera.toggleTorch()"><i data-icon="zap" data-size="19"></i></span>
   </div>
-  <img class="cam-mascot" src="assets/env_cam_mascot.png">
   <div class="cam-bottom">
-    <div class="cam-styles" id="cam-styles"></div>
+    <div class="wheel sm" id="mode-wheel">
+      <b data-m="frame" class="on">相框贴纸</b><b data-m="cutout">抠图贴纸</b>
+    </div>
+    <div class="wheel" id="style-wheel"></div>
     <div class="cam-controls">
       <div class="cam-recent" id="cam-recent" onclick="Camera.openRecent()"><span>最近贴纸</span></div>
       <div id="shutter" onclick="Camera.shoot()"><i data-icon="camera" data-size="30"></i></div>
@@ -178,8 +176,9 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="vendor/page-flip.browser.js"></script>
-<script src="icons.js?v=20260829c"></script>
-<script src="book3d.js?v=20260829c"></script>
-<script src="app.js?v=20260829c"></script>
+<script src="icons.js?v=20260829d"></script>
+<script src="cutout.js?v=20260829d"></script>
+<script src="book3d.js?v=20260829d"></script>
+<script src="app.js?v=20260829d"></script>
 </body>
 </html>
